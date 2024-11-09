@@ -55,3 +55,12 @@ async def create_room(room: RoomCreate, db: Session = Depends(get_db)):
     # Возвращаем ответ с room_name и room_id
     return RoomResponse(room_name=new_room.room_name, room_id=new_room.room_id)
 
+
+@app.get("/rooms/{room_id}", response_model=RoomResponse)
+async def get_room(room_id: str, db: Session = Depends(get_db)):
+    room = db.query(Room).filter(Room.room_id == room_id).first()
+    if room is None:
+        raise HTTPException(status_code=404, detail="Room not found")
+
+    # Возвращаем найденную комнату
+    return RoomResponse(room_name=room.room_name, room_id=room.room_id)

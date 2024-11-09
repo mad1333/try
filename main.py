@@ -1,5 +1,5 @@
 # app.py
-import openpyxl
+#import openpyxl
 
 import pandas as pd
 from fastapi import FastAPI, HTTPException
@@ -77,3 +77,6 @@ def load_menu():
 async def get_menu():
     menu = load_menu()
     return menu
+
+
+@app.post()
