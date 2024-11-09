@@ -5,3 +5,4 @@ pandas==2.0.1
 sqlalchemy==2.0.17
 psycopg2-binary==2.9.6
 uvicorn
+fastapi
