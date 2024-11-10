@@ -4,53 +4,90 @@ from sqlalchemy import create_engine, Column, String, Integer, Float, ForeignKey
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session, relationship
 import uuid
-from typing import List
 
 app = FastAPI()
+from starlette.middleware.cors import CORSMiddleware
 
-# Настройка соединения с базой данных
-DATABASE_URL = "postgresql://prod_backend:prod_backend@158.160.79.20/prod_backend"
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Настройка базы данных PostgreSQL
+DATABASE_URL = "postgresql://postgres:postgres@localhost/postgres"
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
-# Определение моделей SQLAlchemy для базы данных
+
+# Определение моделей
+
 class Room(Base):
-    __tablename__ = "rooms"
+    __tablename__ = "room"
     room_id = Column(String, primary_key=True, index=True)
     room_name = Column(String, unique=True, index=True)
     bills = relationship("Bill", back_populates="room")
 
+
+class User(Base):
+    __tablename__ = "user"
+    user_id = Column(String, primary_key=True, index=True)
+    username = Column(String, unique=True, index=True)
+    bills = relationship("Bill", back_populates="user")
+
+
+class MainBill(Base):
+    __tablename__ = "main_bill"
+    main_bill_id = Column(String, primary_key=True, index=True)
+    room_id = Column(String, ForeignKey("room.room_id"))
+    total_amount = Column(Float)
+    bills = relationship("Bill", back_populates="main_bill")
+
+
 class Bill(Base):
     __tablename__ = "bills"
     bill_id = Column(String, primary_key=True, index=True)
-    bill_name = Column(String, index=True)
-    total_amount = Column(Float)
-    room_id = Column(String, ForeignKey("rooms.room_id"))
+    item_name = Column(String, index=True)
+    quantity = Column(Integer)
+    price = Column(Float)
+    user_id = Column(String, ForeignKey("user.user_id"))
+    main_bill_id = Column(String, ForeignKey("main_bill.main_bill_id"))
+    room_id = Column(String, ForeignKey("room.room_id"))
+    main_bill = relationship("MainBill", back_populates="bills")
     room = relationship("Room", back_populates="bills")
+    user = relationship("User", back_populates="bills")
 
-# Pydantic модели для валидации и сериализации данных
+
+# Создание таблиц в БД
+Base.metadata.create_all(bind=engine)
+
+
+# Pydantic модели
+
 class RoomCreate(BaseModel):
     room_name: str
 
+
 class RoomResponse(BaseModel):
-    room_id: str
     room_name: str
-
-class BillCreate(BaseModel):
-    bill_name: str
-    total_amount: float
-
-class BillResponse(BaseModel):
-    bill_id: str
-    bill_name: str
-    total_amount: float
     room_id: str
 
-# Инициализация базы данных
-Base.metadata.create_all(bind=engine)
 
-# Подключение к базе данных
+class ItemData(BaseModel):
+    name: str
+    count: int
+    price: float
+
+
+class MainBillCreate(BaseModel):
+    room_id: str
+    items: list[ItemData]
+
+
+# Получение сессии БД
 def get_db():
     db = SessionLocal()
     try:
@@ -58,18 +95,20 @@ def get_db():
     finally:
         db.close()
 
+
 # Эндпоинт для создания комнаты
 @app.post("/rooms/", response_model=RoomResponse)
-async def create_room(request: RoomCreate, db: Session = Depends(get_db)):
+async def create_room(room: RoomCreate, db: Session = Depends(get_db)):
     room_id = str(uuid.uuid4())
-    db_room = db.query(Room).filter(Room.room_name == request.room_name).first()
+    db_room = db.query(Room).filter(Room.room_name == room.room_name).first()
     if db_room:
         raise HTTPException(status_code=400, detail="Room name already exists")
-    new_room = Room(room_id=room_id, room_name=request.room_name)
+    new_room = Room(room_id=room_id, room_name=room.room_name)
     db.add(new_room)
     db.commit()
     db.refresh(new_room)
-    return RoomResponse(room_id=new_room.room_id, room_name=new_room.room_name)
+    return RoomResponse(room_name=new_room.room_name, room_id=new_room.room_id)
+
 
 # Эндпоинт для получения комнаты по room_id
 @app.get("/rooms/{room_id}", response_model=RoomResponse)
@@ -77,26 +116,72 @@ async def get_room(room_id: str, db: Session = Depends(get_db)):
     room = db.query(Room).filter(Room.room_id == room_id).first()
     if room is None:
         raise HTTPException(status_code=404, detail="Room not found")
-    return RoomResponse(room_id=room.room_id, room_name=room.room_name)
+    return RoomResponse(room_name=room.room_name, room_id=room.room_id)
 
-# Эндпоинт для создания счета в комнате
-@app.post("/rooms/{room_id}/bills/", response_model=BillResponse)
-async def create_bill(room_id: str, request: BillCreate, db: Session = Depends(get_db)):
-    room = db.query(Room).filter(Room.room_id == room_id).first()
-    if room is None:
-        raise HTTPException(status_code=404, detail="Room not found")
-    bill_id = str(uuid.uuid4())
-    new_bill = Bill(bill_id=bill_id, bill_name=request.bill_name, total_amount=request.total_amount, room_id=room_id)
-    db.add(new_bill)
+
+# Эндпоинт для регистрации пользователя
+@app.post("/users/", response_model=dict)
+async def create_user(username: str, db: Session = Depends(get_db)):
+    user_id = str(uuid.uuid4())
+    db_user = db.query(User).filter(User.username == username).first()
+    if db_user:
+        raise HTTPException(status_code=400, detail="Username already exists")
+    new_user = User(user_id=user_id, username=username)
+    db.add(new_user)
     db.commit()
-    db.refresh(new_bill)
-    return BillResponse(bill_id=new_bill.bill_id, bill_name=new_bill.bill_name, total_amount=new_bill.total_amount, room_id=new_bill.room_id)
+    db.refresh(new_user)
+    return {"user_id": new_user.user_id, "username": new_user.username}
 
-# Эндпоинт для получения всех счетов в комнате
-@app.get("/rooms/{room_id}/bills/", response_model=List[BillResponse])
-async def get_bills(room_id: str, db: Session = Depends(get_db)):
-    room = db.query(Room).filter(Room.room_id == room_id).first()
-    if room is None:
-        raise HTTPException(status_code=404, detail="Room not found")
-    bills = db.query(Bill).filter(Bill.room_id == room_id).all()
-    return [BillResponse(bill_id=bill.bill_id, bill_name=bill.bill_name, total_amount=bill.total_amount, room_id=bill.room_id) for bill in bills]
+
+# Эндпоинт для создания основного счета
+@app.post("/main-bills/", response_model=dict)
+async def create_main_bill(main_bill: MainBillCreate, db: Session = Depends(get_db)):
+    main_bill_id = str(uuid.uuid4())
+    total_amount = sum(item.count * item.price for item in main_bill.items)
+    db_main_bill = MainBill(main_bill_id=main_bill_id, room_id=main_bill.room_id, total_amount=total_amount)
+    db.add(db_main_bill)
+
+    for item in main_bill.items:
+        bill_id = str(uuid.uuid4())
+        db_bill = Bill(
+            bill_id=bill_id,
+            item_name=item.name,
+            quantity=item.count,
+            price=item.price,
+            main_bill_id=main_bill_id,
+            room_id=main_bill.room_id,
+        )
+        db.add(db_bill)
+
+    db.commit()
+    db.refresh(db_main_bill)
+    return {
+        "main_bill_id": db_main_bill.main_bill_id,
+        "room_id": db_main_bill.room_id,
+        "total_amount": db_main_bill.total_amount
+    }
+
+
+# Эндпоинт для получения счета по ID
+@app.get("/main-bills/{main_bill_id}", response_model=dict)
+async def get_main_bill(main_bill_id: str, db: Session = Depends(get_db)):
+    main_bill = db.query(MainBill).filter(MainBill.main_bill_id == main_bill_id).first()
+    if main_bill is None:
+        raise HTTPException(status_code=404, detail="Main bill not found")
+
+    bills = db.query(Bill).filter(Bill.main_bill_id == main_bill_id).all()
+    items = [
+        {
+            "item_name": bill.item_name,
+            "quantity": bill.quantity,
+            "price": bill.price
+        }
+        for bill in bills
+    ]
+
+    return {
+        "main_bill_id": main_bill.main_bill_id,
+        "room_id": main_bill.room_id,
+        "total_amount": main_bill.total_amount,
+        "items": items
+    }
