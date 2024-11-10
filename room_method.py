@@ -1,15 +1,26 @@
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, Request
 from sqlalchemy import create_engine, Column, String, Integer, Float, ForeignKey
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session, relationship
 import uuid
 
-from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import List
 
+from fastapi.middleware.cors import CORSMiddleware
+
 app = FastAPI()
-from starlette.middleware.cors import CORSMiddleware
+
+# Настройка CORS
+@app.middleware("http")
+async def add_cors_headers(request: Request, call_next):
+    response = await call_next(request)
+    # Добавляем CORS-заголовки
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type"
+    return response
+
 # Модель для обработки входящих данных JSON
 class Item(BaseModel):
     name: str
@@ -33,13 +44,7 @@ async def create_main_bill(main_bill: MainBill):
 
 # Запуск приложения
 # Запускайте сервер, используя команду: uvicorn server:app --host 0.0.0.0 --port 8000 --reload
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+
 
 # Настройка базы данных PostgreSQL
 DATABASE_URL = "postgresql://postgres:postgres@localhost/postgres"
