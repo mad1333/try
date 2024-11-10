@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Depends, Request, APIRouter
+from fastapi import FastAPI, HTTPException, Depends, Request, APIapp
 from sqlalchemy import create_engine, Column, String, Integer, Float, ForeignKey
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session, relationship
@@ -10,7 +10,7 @@ from typing import List
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
-router = APIRouter(prefix="/api")  # Добавляем префикс '/api'
+app = APIapp(prefix="/api")  # Добавляем префикс '/api'
 # Настройка CORS
 @app.middleware("http")
 async def add_cors_headers(request: Request, call_next):
@@ -32,7 +32,7 @@ class MainBill(BaseModel):
     items: List[Item]
 
 # Эндпоинт для получения данных JSON
-@router.post("/main-bills/")
+@app.post("/main-bills/")
 async def create_main_bill(main_bill: MainBill):
     # Логика обработки полученных данных
     # Например, просто выведем их на сервере
@@ -127,7 +127,7 @@ def get_db():
 
 
 # Эндпоинт для создания комнаты
-@router.post("/rooms/", response_model=RoomResponse)
+@app.post("/rooms/", response_model=RoomResponse)
 async def create_room(room: RoomCreate, db: Session = Depends(get_db)):
     room_id = str(uuid.uuid4())
     db_room = db.query(Room).filter(Room.room_name == room.room_name).first()
@@ -141,7 +141,7 @@ async def create_room(room: RoomCreate, db: Session = Depends(get_db)):
 
 
 # Эндпоинт для получения комнаты по room_id
-@router.get("/rooms/{room_id}", response_model=RoomResponse)
+@app.get("/rooms/{room_id}", response_model=RoomResponse)
 async def get_room(room_id: str, db: Session = Depends(get_db)):
     room = db.query(Room).filter(Room.room_id == room_id).first()
     if room is None:
@@ -150,7 +150,7 @@ async def get_room(room_id: str, db: Session = Depends(get_db)):
 
 
 # Эндпоинт для регистрации пользователя
-@router.post("/users/", response_model=dict)
+@app.post("/users/", response_model=dict)
 async def create_user(username: str, db: Session = Depends(get_db)):
     user_id = str(uuid.uuid4())
     db_user = db.query(User).filter(User.username == username).first()
@@ -164,7 +164,7 @@ async def create_user(username: str, db: Session = Depends(get_db)):
 
 
 # Эндпоинт для создания основного счета
-@router.post("/main-bills/", response_model=dict)
+@app.post("/main-bills/", response_model=dict)
 async def create_main_bill(main_bill: MainBillCreate, db: Session = Depends(get_db)):
     main_bill_id = str(uuid.uuid4())
     total_amount = sum(item.count * item.price for item in main_bill.items)
@@ -193,7 +193,7 @@ async def create_main_bill(main_bill: MainBillCreate, db: Session = Depends(get_
 
 
 # Эндпоинт для получения счета по ID
-@router.get("/main-bills/{main_bill_id}", response_model=dict)
+@app.get("/main-bills/{main_bill_id}", response_model=dict)
 async def get_main_bill(main_bill_id: str, db: Session = Depends(get_db)):
     main_bill = db.query(MainBill).filter(MainBill.main_bill_id == main_bill_id).first()
     if main_bill is None:
